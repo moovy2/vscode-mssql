@@ -1,5 +1,176 @@
 # Change Log
 
+## Version 1.27.0
+* Release date: December 18, 2024
+* Release status: GA
+### What's new in 1.27.0
+* Added the ability to filter query result rows by value
+* Added the ability to maximize a specific result set from a query result with multiple sets
+* Added a prompt for adding a firewall rule when using the new Connection Dialog to connect to an Azure SQL Database logical server
+* Fixed usability bugs encountered when viewing query plans
+* Improved performance when resizing the new query results pane with many result sets
+* Fixed several bugs related to the query result message display
+
+## Version 1.26.0
+* Release date: November 20, 2024
+* Release status: GA
+### What's new in 1.26.0
+* Added the ability to open query results in a tab for the new UI, replicating the functionality of the previous query results experience.
+* Added the `mssql.openQueryResultsInTabByDefault` setting, allowing users to set this behavior as the default (applicable only when `mssql.enableRichExperiences` is enabled).
+* Added ability to view the actual query plan for executed queries in the new UI.
+* Added support for Visual Studio Code theming in the new UI.
+
+## Version 1.25.0
+* Release date: October 23, 2024
+* Release status: GA
+### What's new in 1.25.0
+* Added `mssql.enableRichExperiences` setting to enable modern experiences (public preview), including a connection dialog, table designer, new query results pane, query plan viewing, and object explorer filtering.  [Learn more](https://github.com/microsoft/vscode-mssql/blob/main/FEATURES.md#modern-features-in-mssql-for-visual-studio-code)
+* Added multiple result set support in new query results pane
+* Added browsing your Azure subscriptions to connect to a SQL database
+
+## Version 1.24.0
+* Release date: September, 4, 2024
+* Release status: GA
+### What's new in 1.24.0
+* Fix [Query messages lost switching tabs](https://github.com/microsoft/azuredatastudio/issues/25525) bug
+* Add `mssql.enableExperimentalFeatures` setting to enable early preview connection, query plan, and table design experiences
+* Fix several accessibility bugs
+
+## Version 1.23.0
+* Release date: July, 31, 2024
+* Release status: GA
+### What's new in 1.23.0
+* update STS dependency to address [Transaction Isolation Level](https://github.com/microsoft/azuredatastudio/issues/25525) bug
+
+## Version 1.22.1
+* Release date: January, 10, 2024
+* Release status: GA
+### What's new in 1.22.1
+* update STS dependency to address [CVE-2024-0056](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-0056)
+
+## Version 1.22.0
+* Release date: November 8, 2023
+* Release status: GA
+### What's new in 1.22.0
+* Azure Active Directory (Azure AD) is renamed to Entra Id - [#17824](https://github.com/microsoft/vscode-mssql/issues/17824)
+* Added command for clearing Azure token cache - [#17807](https://github.com/microsoft/vscode-mssql/issues/17807)
+* Added support for setting Firewall rule name in firewall rule - [#17803](https://github.com/microsoft/vscode-mssql/issues/17803)
+* Removed Azure tenant config filter setting - [#17798](https://github.com/microsoft/vscode-mssql/issues/17798)
+
+* Bug Fixes:
+  - Fixed Firewall Rule creation issues when prompted - [#17607](https://github.com/microsoft/vscode-mssql/issues/17607)
+  - Fixed proxy error 502 when downloading Sql Tools Service - [#17772](https://github.com/microsoft/vscode-mssql/issues/17772)
+  - Fixed an issue where connection profile could not be saved after enabling trust server certificate [#17805](https://github.com/microsoft/vscode-mssql/issues/17805)
+
+## Version 1.21.0
+* Release date: September 20, 2023
+* Release status: GA
+### What's new in 1.21.0
+* Enabled connection pooling by default and added command support to clear pooled connections - https://github.com/microsoft/vscode-mssql/pull/17786
+* Added setting to configure `maxCharsToStore` to allow reading large data strings - https://github.com/microsoft/vscode-mssql/issues/1052
+* Bug Fixes
+  - Fixed status bar to show correct 'Encryption' option for connection - https://github.com/microsoft/vscode-mssql/issues/17671
+
+## Version 1.20.1
+* Release date: August 7, 2023
+* Release status: GA
+### What's new in 1.20.1
+* Fixed an issue with not being able to download the SQL Tools Service Component in a proxy-enabled environment (https://github.com/microsoft/vscode-mssql/issues/17755)
+
+## Version 1.20.0
+* Release date: July 26, 2023
+* Release status: GA
+### What's new in 1.20.0
+* Added new setting to support enabling connection pooling for performance improvement -  https://github.com/microsoft/vscode-mssql/pull/17733
+* Bug Fixes:
+  - Fixed issue where creating connection with connection string would fail -  https://github.com/microsoft/vscode-mssql/pull/17737
+  - Fixed issue where Copy actions wouldn't work on Data Grid cells -  https://github.com/microsoft/vscode-mssql/pull/17722
+  - Added missing DB Create syntax keyword colorization -  https://github.com/microsoft/vscode-mssql/pull/17732
+  - Improved connection description when selecting connection from quick pick -  https://github.com/microsoft/vscode-mssql/pull/17737
+  - Fixed authentication issue where user account could not be found in MSAL Cache in Linux - https://github.com/microsoft/vscode-mssql/pull/17747
+
+## Version 1.19.1
+* Release date: June 5, 2023
+* Release status: GA
+### What's new in 1.19.1
+* Performance improvement in Query Editor language service by enabling connection pooling (https://github.com/microsoft/azuredatastudio/issues/22970)
+* Fixed an issue where hyphenated user accounts failed to login to Azure SQL Server (https://github.com/microsoft/azuredatastudio/issues/23210)
+
+## Version 1.19.0
+* Release date: May 24, 2023
+* Release status: GA
+### What's new in 1.19.0
+* Added support for Linux ARM64 runtime - https://github.com/microsoft/vscode-mssql/pull/17639
+* Use preferred username instead of email for Azure accounts - https://github.com/microsoft/vscode-mssql/pull/17606
+* Removed prompt to select tenant when SQL Auth Provider is enabled - https://github.com/microsoft/vscode-mssql/pull/17611
+* Updated msal-node npm package to v1.16.0 - https://github.com/microsoft/vscode-mssql/pull/17605
+* Bug Fixes
+  - Added validation for servername before attempting connection https://github.com/microsoft/vscode-mssql/pull/17680
+  - Fixed an issue when selecting "Add Azure Account" during profile creation prompts for profile name first https://github.com/microsoft/vscode-mssql/pull/17664
+  - Fixed a bug where SQLCMD variables weren't getting JSONified https://github.com/microsoft/vscode-mssql/pull/17683
+
+## Version 1.18.0
+* Release date: March 22, 2023
+* Release status: GA
+
+### What's new in 1.18.0
+* Upgraded AAD Azure account management to support MSAL authentication.
+* Added native MacOS and Windows arm64 support - https://github.com/microsoft/vscode-mssql/issues/17614
+* Added "Group by Schema" to Object Explorer - https://github.com/microsoft/vscode-mssql/pull/17543
+* Add Object Explorer connection timeout setting - https://github.com/microsoft/vscode-mssql/pull/17548
+* Accessibility Fixes
+	- Screen Reader is not reading the full information related to the database name - https://github.com/microsoft/vscode-mssql/issues/17204
+	- After pressing tab key from "More actions" keyboard focus is going to bottom status bar instead of going to the "messages" dropdown - https://github.com/microsoft/vscode-mssql/issues/17192
+  - Message window does not expand and collapse with the help of keyboard and shortcut key - https://github.com/microsoft/vscode-mssql/issues/1687
+
+## Version 1.17.0
+* Release date: January 25, 2023
+* Release status: GA
+
+### What's new in 1.17.0
+* BREAKING CHANGE - Connection Encryption is now Enabled by Default - https://github.com/microsoft/vscode-mssql/pull/17484
+	- Moving to Microsoft.Data.SqlClient 5.0.1 dependency with STS Update
+	- By default, saved connection profiles will connect with encryption and only accept trusted server certificates. This is a breaking change for some connections and some saved connection profiles may require updates to connect.
+	- See https://aka.ms/vscodemssql-connection for more information.
+* Introduced [HostNameInCertificate](https://learn.microsoft.com/dotnet/api/microsoft.data.sqlclient.sqlconnectionstringbuilder.hostnameincertificate#microsoft-data-sqlclient-sqlconnectionstringbuilder-hostnameincertificate) Connection Property.
+* Exposed getServerInfo API to allow Target Platform to be set automatically when creating SQL Projects from database
+	- https://github.com/microsoft/azuredatastudio/issues/20363
+	- https://github.com/microsoft/azuredatastudio/issues/20576
+* Accessibility Fixes
+	- Fixed Screen Reader not reading status of "loading query" - https://github.com/microsoft/vscode-mssql/issues/17451
+	- Fixed Screen Reader to announce messages table in a clearer manner - https://github.com/microsoft/vscode-mssql/issues/17450
+	- Fixed issue where Results Table was not minimizable with keyboard - https://github.com/microsoft/vscode-mssql/issues/17452
+
+### SQL Grammar Fixes & Updates
+* Fix function syntax highlighting including non-function keywords https://github.com/microsoft/vscode-mssql/pull/17462
+* Match "other" keywords last - https://github.com/microsoft/vscode-mssql/pull/17464
+* Syntax Update (Mostly from SQL 2022) - https://github.com/microsoft/vscode-mssql/pull/17465
+* Add SELECT ALL and FULL/NATURAL JOIN syntax to grammar - https://github.com/microsoft/vscode-mssql/pull/17508
+	- Special thank you to https://github.com/hanohrs for their help with this!
+
+## Version 1.16.0
+* Release date: August 24, 2022
+* Release status: GA
+
+### What's new in 1.16.0
+* Added support for creating Azure Functions with SQL Bindings from Views in the Object Explorer
+* Fixed issues with Integrated authentication in Unix environments https://github.com/microsoft/vscode-mssql/issues/17333
+
+## Version 1.15.0
+* Release date: June 15, 2022
+* Release status: GA
+
+### What's new in 1.15.0
+* Add support for dependent extensions
+* [Fixed issues](https://github.com/microsoft/vscode-mssql/milestone/22?closed=1)
+
+## Version 1.14.2
+* Release date: May 20, 2022
+* Release status: GA
+
+### What's new in 1.14.2
+* Adds extension APIs for managing Azure resources
+
 ## Version 1.14.1
 * Release date: April 22, 2022
 * Release status: GA

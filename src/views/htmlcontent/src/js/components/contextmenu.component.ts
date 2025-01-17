@@ -1,11 +1,22 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
 import { Component, Output, EventEmitter, Inject, forwardRef, OnInit } from '@angular/core';
 import { ISlickRange } from '../../../../../models/interfaces';
 import { ShortcutService } from './../services/shortcuts.service';
 import * as Constants from './../constants';
+
+export interface IContextMenuClickEventArgs {
+	type: string;
+	batchId: number;
+	resultId: number;
+	index: number;
+	selection: ISlickRange[];
+	source: 'contextMenu' | 'gridIcons';
+}
+
 /**
  * The component that acts as the contextMenu for slick grid
  */
@@ -39,8 +50,8 @@ export class ContextMenu implements OnInit {
 	// tslint:disable-next-line:no-unused-variable
 	public Constants = Constants;
 
-	@Output() clickEvent: EventEmitter<{ type: string, batchId: number, resultId: number, index: number, selection: ISlickRange[] }>
-		= new EventEmitter<{ type: string, batchId: number, resultId: number, index: number, selection: ISlickRange[] }>();
+	@Output() clickEvent: EventEmitter<IContextMenuClickEventArgs>
+		= new EventEmitter<IContextMenuClickEventArgs>();
 	private batchId: number;
 	private resultId: number;
 	private index: number;
@@ -92,7 +103,15 @@ export class ContextMenu implements OnInit {
 
 	handleContextActionClick(type: string): void {
 		if (!this.isDisabled) {
-			this.clickEvent.emit({ 'type': type, 'batchId': this.batchId, 'resultId': this.resultId, 'selection': this.selection, 'index': this.index });
+			this.clickEvent.emit(
+				{
+					type: type,
+					batchId: this.batchId,
+					resultId: this.resultId,
+					selection: this.selection,
+					index: this.index,
+					source: 'contextMenu'
+				});
 		}
 	}
 }

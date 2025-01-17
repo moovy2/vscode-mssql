@@ -1,7 +1,7 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
 
 import {
 	Component, OnInit, Inject, forwardRef, ViewChild, ViewChildren, QueryList, ElementRef,
@@ -14,7 +14,7 @@ import {
 } from '../../../../../models/interfaces';
 import { DataService } from './../services/data.service';
 import { ShortcutService } from './../services/shortcuts.service';
-import { ContextMenu } from './contextmenu.component';
+import { ContextMenu, IContextMenuClickEventArgs } from './contextmenu.component';
 import { MessagesContextMenu } from './messagescontextmenu.component';
 
 import * as Constants from './../constants';
@@ -22,6 +22,7 @@ import * as Utils from './../utils';
 
 /** enableProdMode */
 import { enableProdMode } from '@angular/core';
+import { TelemetryActions, TelemetryViews } from '../../../../../sharedInterfaces/telemetry';
 enableProdMode();
 
 // text selection helper library
@@ -39,13 +40,14 @@ export interface IGridDataSet {
 }
 
 // tslint:disable:max-line-length
+
 const template = `
 <div class="fullsize vertBox">
-    <div *ngIf="dataSets.length > 0" role="button" id="resultspane" tabIndex="0" class="boxRow header collapsible"
+    <div #resultsheader *ngIf="dataSets.length > 0" role="button" id="resultspane" tabIndex="0" class="boxRow header collapsible"
         [class.collapsed]="!resultActive"
         (click)="toggleResultsPane()"
         (keydown)="handleResultsKeydown($event)"
-        [attr.aria-label]="Constants.resultPaneLabel"
+        [attr.aria-label]="Constants.resultPaneLabel + '. ' + Constants.accessShortcut + ': ' + resultShortcut"
         [attr.aria-expanded]="resultActive">
         <span> {{Constants.resultPaneLabel}} </span>
         <span class="shortCut"> {{resultShortcut}} </span>
@@ -57,16 +59,18 @@ const template = `
         <div class="boxRow content horzBox slickgrid" *ngFor="let dataSet of renderedDataSets; let i = index"
             [style.max-height]="renderedDataSets.length > 1 ? dataSet.maxHeight + 'px' : 'inherit'"
             [style.min-height]="renderedDataSets.length > 1 ? dataSet.minHeight + 'px' : 'inherit'"
-            [style.font-size]="resultsFontSize + 'px'">
+            [style.font-size]="resultsFontSize + 'px'"
+			[style.font-family]="resultsFontFamily">
             <slick-grid #slickgrid id="slickgrid_{{i}}" [columnDefinitions]="dataSet.columnDefinitions"
                         [ngClass]="i === activeGrid ? 'active' : ''"
                         [dataRows]="dataSet.dataRows"
-                        (contextMenu)="openContextMenu($event, dataSet.batchId, dataSet.resultId, i)"
+                        (onContextMenu)="openContextMenu($event, dataSet.batchId, dataSet.resultId, i)"
                         enableAsyncPostRender="true"
                         showDataTypeIcon="false"
                         showHeader="true"
                         [resized]="dataSet.resized"
                         (mousedown)="navigateToGrid(i)"
+                        (focusin)="setActiveGrid(i)"
                         [selectionModel]="selectionModel"
                         [plugins]="slickgridPlugins"
                         class="boxCol content vertBox slickgrid">
@@ -85,9 +89,9 @@ const template = `
     </div>
     <context-menu #contextmenu (clickEvent)="handleContextClick($event)"></context-menu>
     <msg-context-menu #messagescontextmenu (clickEvent)="handleMessagesContextClick($event)"></msg-context-menu>
-    <div id="messagepane" role="button" tabIndex="0" class="boxRow header collapsible"
+    <div #messagesheader id="messagepane" role="button" tabIndex="0" class="boxRow header collapsible"
         [class.collapsed]="!messageActive"
-        [attr.aria-label]="Constants.messagePaneLabel"
+        [attr.aria-label]="Constants.messagePaneLabel + '. ' + Constants.accessShortcut + ': ' + messageShortcut"
         [attr.aria-expanded]="messageActive"
         (click)="toggleMessagesPane()"
         (keydown)="handleMessagesKeydown($event)"
@@ -105,6 +109,10 @@ const template = `
                 <col span="1" class="wide">
             </colgroup>
             <tbody>
+                <tr>
+                    <th>{{Constants.messagesTableTimeStampColumn}}</th>
+                    <th>{{Constants.messagesTableMessageColumn}}</th>
+                </tr>
                 <template ngFor let-message [ngForOf]="messages">
                     <tr class='messageRow'>
                         <td><span *ngIf="!Utils.isNumber(message.batchId)">[{{message.time}}]</span></td>
@@ -129,6 +137,7 @@ const template = `
     <div id="resizeHandle" [class.hidden]="!resizing" [style.top.px]="resizeHandleTop"></div>
 </div>
 `;
+
 // tslint:enable:max-line-length
 
 /**
@@ -154,6 +163,9 @@ const template = `
 })
 
 export class AppComponent implements OnInit, AfterViewChecked {
+	@ViewChild('resultsheader') resultsGroupHeaderButton: ElementRef;
+	@ViewChild('messagesheader') messagesGroupHeaderButton: ElementRef;
+
 	// CONSTANTS
 	private scrollTimeOutTime = 200;
 	private windowSize = 50;
@@ -172,9 +184,11 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			this.slickgrids.toArray()[this.activeGrid]['_grid'].setActiveCell(0, 1);
 		},
 		'event.toggleResultPane': () => {
+			this.resultsGroupHeaderButton.nativeElement.focus();
 			this.resultActive = !this.resultActive;
 		},
 		'event.toggleMessagePane': () => {
+			this.messagesGroupHeaderButton.nativeElement.focus();
 			this.toggleMessagesPane();
 		},
 		'event.nextGrid': () => {
@@ -191,14 +205,14 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			} else {
 				let activeGrid = this.activeGrid;
 				let selection = this.slickgrids.toArray()[activeGrid].getSelectedRanges();
-				selection = this.tryCombineSelections(selection);
+				selection = this.tryCombineSelectionsForResults(selection);
 				this.dataService.copyResults(selection, this.renderedDataSets[activeGrid].batchId, this.renderedDataSets[activeGrid].resultId);
 			}
 		},
 		'event.copyWithHeaders': () => {
 			let activeGrid = this.activeGrid;
 			let selection = this.slickgrids.toArray()[activeGrid].getSelectedRanges();
-			selection = this.tryCombineSelections(selection);
+			selection = this.tryCombineSelectionsForResults(selection);
 			this.dataService.copyResults(selection, this.renderedDataSets[activeGrid].batchId,
 				this.renderedDataSets[activeGrid].resultId, true);
 		},
@@ -206,7 +220,13 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			this.magnify(this.activeGrid);
 		},
 		'event.selectAll': () => {
-			this.slickgrids.toArray()[this.activeGrid].selection = true;
+			// note that "grid.selection = true" will select the row number column
+			// and be incompatible with the selection merging code in this component
+			let grid = this.slickgrids.toArray()[this.activeGrid];
+			grid.selection = [
+				new SlickGrid.Range(0, 1,
+					grid._grid.getDataLength() - 1,
+					grid._grid.getColumns().length - 1)];
 		},
 		'event.saveAsCSV': () => {
 			this.sendSaveRequest('csv');
@@ -216,6 +236,22 @@ export class AppComponent implements OnInit, AfterViewChecked {
 		},
 		'event.saveAsExcel': () => {
 			this.sendSaveRequest('excel');
+		},
+		'event.changeColumnWidth': async () => {
+			const activeGrid = this.slickgrids.toArray()[this.activeGrid]['_grid'];
+			if (activeGrid) {
+				const activeCell = activeGrid.getActiveCell();
+				const columns = activeGrid.getColumns();
+				if (!columns[activeCell.cell]?.resizable) {
+					return;
+				}
+				const newWidth = await this.dataService.getNewColumnWidth(columns[activeCell.cell].width);
+				if (newWidth) {
+					columns[activeCell.cell].width = newWidth;
+					activeGrid.setColumns(columns);
+					activeGrid.setActiveCell(activeCell.row, activeCell.cell);
+				}
+			}
 		}
 	};
 
@@ -234,6 +270,14 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			},
 			functionality: (batchId, resultId, index) => {
 				this.magnify(index);
+				this.dataService.sendActionEvent(
+					TelemetryViews.ResultsGrid,
+					TelemetryActions.ResultPaneAction,
+					{
+						action: this.renderedDataSets.length === 1 ? 'exitFullScreen' : 'extendFullScreen'
+					},
+					{}
+				);
 			}
 		},
 		{
@@ -242,9 +286,16 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			hoverText: () => { return Constants.saveCSVLabel; },
 			functionality: (batchId, resultId, index) => {
 				let selection = this.slickgrids.toArray()[index].getSelectedRanges();
-				selection = this.tryCombineSelections(selection);
+				selection = this.tryCombineSelectionsForResults(selection);
 				if (selection.length <= 1) {
-					this.handleContextClick({ type: 'savecsv', batchId: batchId, resultId: resultId, index: index, selection: selection });
+					this.handleContextClick({
+						type: 'savecsv',
+						batchId: batchId,
+						resultId: resultId,
+						index: index,
+						selection: selection,
+						source: 'gridIcons'
+					});
 				} else {
 					this.dataService.showWarning(Constants.msgCannotSaveMultipleSelections);
 				}
@@ -256,9 +307,16 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			hoverText: () => { return Constants.saveJSONLabel; },
 			functionality: (batchId, resultId, index) => {
 				let selection = this.slickgrids.toArray()[index].getSelectedRanges();
-				selection = this.tryCombineSelections(selection);
+				selection = this.tryCombineSelectionsForResults(selection);
 				if (selection.length <= 1) {
-					this.handleContextClick({ type: 'savejson', batchId: batchId, resultId: resultId, index: index, selection: selection });
+					this.handleContextClick({
+						type: 'savejson',
+						batchId: batchId,
+						resultId: resultId,
+						index: index,
+						selection: selection,
+						source: 'gridIcons'
+					});
 				} else {
 					this.dataService.showWarning(Constants.msgCannotSaveMultipleSelections);
 				}
@@ -270,9 +328,16 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			hoverText: () => { return Constants.saveExcelLabel; },
 			functionality: (batchId, resultId, index) => {
 				let selection = this.slickgrids.toArray()[index].getSelectedRanges();
-				selection = this.tryCombineSelections(selection);
+				selection = this.tryCombineSelectionsForResults(selection);
 				if (selection.length <= 1) {
-					this.handleContextClick({ type: 'saveexcel', batchId: batchId, resultId: resultId, index: index, selection: selection });
+					this.handleContextClick({
+						type: 'saveexcel',
+						batchId: batchId,
+						resultId: resultId,
+						index: index,
+						selection: selection,
+						source: 'gridIcons'
+					});
 				} else {
 					this.dataService.showWarning(Constants.msgCannotSaveMultipleSelections);
 				}
@@ -307,7 +372,8 @@ export class AppComponent implements OnInit, AfterViewChecked {
 	public complete = false;
 	private uri: string;
 	private hasRunQuery: boolean = false;
-	public resultsFontSize;
+	public resultsFontSize: number;
+	public resultsFontFamily: string;
 	@ViewChild('contextmenu') contextMenu: ContextMenu;
 	@ViewChild('messagescontextmenu') messagesContextMenu: MessagesContextMenu;
 	@ViewChildren('slickgrid') slickgrids: QueryList<SlickGrid>;
@@ -337,6 +403,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			this.config = config;
 			self._messageActive = self.config.messagesDefaultOpen;
 			self.resultsFontSize = self.config.resultsFontSize;
+			self.resultsFontFamily = self.config.resultsFontFamily;
 			this.shortcuts.stringCodeFor('event.toggleMessagePane').then((result) => {
 				self.messageShortcut = result;
 			});
@@ -377,16 +444,12 @@ export class AppComponent implements OnInit, AfterViewChecked {
 					let resultSet = event.data;
 
 					// Setup a function for generating a promise to lookup result subsets
-					let loadDataFunction = (offset: number, count: number): Promise<IGridDataRow[]> => {
-						return self.dataService.getRows(offset, count, resultSet.batchId, resultSet.id).then(rows => {
-							let gridData: IGridDataRow[] = [];
-							for (let row = 0; row < rows.rows.length; row++) {
-								// Push row values onto end of gridData for slickgrid
-								gridData.push({
-									values: rows.rows[row]
-								});
+					let loadDataFunction = (offset: number, count: number): Promise<any[]> => {
+						return self.dataService.getRows(offset, count, resultSet.batchId, resultSet.id).then(response => {
+							if (!response) {
+								return [];
 							}
-							return gridData;
+							return response.rows;
 						});
 					};
 
@@ -417,6 +480,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
 							let linkType = c.isXml ? 'xml' : 'json';
 							return {
 								id: i.toString(),
+								field: i.toString(),
 								name: c.columnName === 'Microsoft SQL Server 2005 XML Showplan'
 									? 'XML Showplan'
 									: Utils.htmlEntities(c.columnName),
@@ -426,6 +490,16 @@ export class AppComponent implements OnInit, AfterViewChecked {
 							};
 						})
 					};
+					dataSet.columnDefinitions.unshift({
+						id: 'rowNumber',
+						name: '',
+						field: 'rowNumber',
+						width: 22,
+						type: FieldType.Integer,
+						focusable: true,
+						selectable: false,
+						formatter: r => { return `<span class="row-number">${r + 1}</span>`; }
+					});
 					self.dataSets.push(dataSet);
 
 					// Create a dataSet to render without rows to reduce DOM size
@@ -523,7 +597,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
 	/**
 	 * Send save result set request to service
 	 */
-	handleContextClick(event: { type: string, batchId: number, resultId: number, index: number, selection: ISlickRange[] }): void {
+	handleContextClick(event: IContextMenuClickEventArgs): void {
 		switch (event.type) {
 			case 'savecsv':
 				this.dataService.sendSaveRequest(event.batchId, event.resultId, 'csv', event.selection);
@@ -550,12 +624,57 @@ export class AppComponent implements OnInit, AfterViewChecked {
 			default:
 				break;
 		}
+		this.dataService.sendActionEvent(
+			TelemetryViews.ResultsGrid,
+			TelemetryActions.ResultPaneAction,
+			{
+				'action': event.type,
+				'source': event.source,
+				'selectionPresent': (event.selection && event.selection.length > 0) ? 'true' : 'false',
+			},
+			{
+				selectionLength: event.selection ? event.selection.length : 0,
+			});
 	}
 
-	openContextMenu(event: { x: number, y: number }, batchId, resultId, index): void {
-		let selection = this.slickgrids.toArray()[index].getSelectedRanges();
-		selection = this.tryCombineSelections(selection);
-		this.contextMenu.show(event.x, event.y, batchId, resultId, index, selection);
+	openContextMenu(event: MouseEvent, batchId, resultId, index): void {
+		let selection: ISlickRange[] = this.slickgrids.toArray()[index].getSelectedRanges();
+		selection = this.tryCombineSelectionsForResults(selection);
+
+		let grid = this.slickgrids.toArray()[index]._grid;
+		let contextMenuCell = grid.getCellFromEvent(event);
+		if (contextMenuCell || grid.canCellBeActive(contextMenuCell.row, contextMenuCell.cell)) {
+			if (selection.length === 0 || !this.isContextMenuCellWIthinSelection(selection, contextMenuCell)) {
+				selection = [new SlickGrid.Range(contextMenuCell.row, contextMenuCell.cell - 1, contextMenuCell.row, contextMenuCell.cell - 1)];
+				grid.setActiveCell(contextMenuCell.row, contextMenuCell.cell);
+			}
+		}
+
+		this.contextMenu.show(event.clientX, event.clientY, batchId, resultId, index, selection);
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	private isContextMenuCellWIthinSelection(selections: ISlickRange[], contextMenuCell: { row: number, cell: number }): boolean {
+		for (const selection of selections) {
+			if (selection.fromRow <= contextMenuCell.row && selection.toRow >= contextMenuCell.row && selection.fromCell <= contextMenuCell.cell - 1 && selection.toCell >= contextMenuCell.cell - 1) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private tryCombineSelectionsForResults(selections: ISlickRange[]): ISlickRange[] {
+		// need to take row number column in to consideration.
+		return this.tryCombineSelections(selections).map(range => {
+			return {
+				fromCell: range.fromCell - 1,
+				fromRow: range.fromRow,
+				toCell: range.toCell - 1,
+				toRow: range.toRow
+			};
+		});
 	}
 
 	private tryCombineSelections(selections: ISlickRange[]): ISlickRange[] {
@@ -594,7 +713,7 @@ export class AppComponent implements OnInit, AfterViewChecked {
 		let batchId = this.renderedDataSets[activeGrid].batchId;
 		let resultId = this.renderedDataSets[activeGrid].resultId;
 		let selection = this.slickgrids.toArray()[activeGrid].getSelectedRanges();
-		selection = this.tryCombineSelections(selection);
+		selection = this.tryCombineSelectionsForResults(selection);
 		this.dataService.sendSaveRequest(batchId, resultId, format, selection);
 	}
 
@@ -900,6 +1019,27 @@ export class AppComponent implements OnInit, AfterViewChecked {
 	 * @returns A boolean representing if the navigation was successful
 	 */
 	navigateToGrid(targetIndex: number): boolean {
+		const result = this.setActiveGrid(targetIndex);
+		if (!result) { return false; }
+
+		// scrolling logic
+		let resultsWindow = $('#results');
+		let scrollTop = resultsWindow.scrollTop();
+		let scrollBottom = scrollTop + resultsWindow.height();
+		let gridHeight = $(this._el.nativeElement).find('slick-grid').height();
+		if (scrollBottom < gridHeight * (targetIndex + 1)) {
+			scrollTop += (gridHeight * (targetIndex + 1)) - scrollBottom;
+			resultsWindow.scrollTop(scrollTop);
+		}
+		if (scrollTop > gridHeight * targetIndex) {
+			scrollTop = (gridHeight * targetIndex);
+			resultsWindow.scrollTop(scrollTop);
+		}
+
+		return true;
+	}
+
+	setActiveGrid(targetIndex: number): boolean {
 		// check if the target index is valid
 		if (targetIndex >= this.renderedDataSets.length || targetIndex < 0) {
 			return false;
@@ -917,21 +1057,6 @@ export class AppComponent implements OnInit, AfterViewChecked {
 		this.slickgrids.toArray()[this.activeGrid].selection = false;
 		this.slickgrids.toArray()[targetIndex].setActive();
 		this.activeGrid = targetIndex;
-
-		// scrolling logic
-		let resultsWindow = $('#results');
-		let scrollTop = resultsWindow.scrollTop();
-		let scrollBottom = scrollTop + resultsWindow.height();
-		let gridHeight = $(this._el.nativeElement).find('slick-grid').height();
-		if (scrollBottom < gridHeight * (targetIndex + 1)) {
-			scrollTop += (gridHeight * (targetIndex + 1)) - scrollBottom;
-			resultsWindow.scrollTop(scrollTop);
-		}
-		if (scrollTop > gridHeight * targetIndex) {
-			scrollTop = (gridHeight * targetIndex);
-			resultsWindow.scrollTop(scrollTop);
-		}
-
 		return true;
 	}
 

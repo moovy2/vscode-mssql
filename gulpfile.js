@@ -1,39 +1,74 @@
-﻿var gulp = require('gulp');
-var rename = require('gulp-rename');
-var gulpTsLint = require('gulp-tslint');
-var ts = require('gulp-typescript');
-var tslint = require('tslint');
-var tsProject = ts.createProject('tsconfig.json');
-var del = require('del');
-var srcmap = require('gulp-sourcemaps');
-var config = require('./tasks/config');
-var concat = require('gulp-concat');
-var minifier = require('gulp-uglify/minifier');
-var uglifyjs = require('uglify-js');
-var nls = require('vscode-nls-dev');
-var argv = require('yargs').argv;
-var min = (argv.min === undefined) ? false : true;
-var vscodeTest = require('vscode-test');
-var packageJson = require('./package.json');
-
+﻿const gulp = require('gulp');
+const rename = require('gulp-rename');
+const ts = require('gulp-typescript');
+const tsProject = ts.createProject('tsconfig.json');
+const del = require('del');
+const srcmap = require('gulp-sourcemaps');
+const config = require('./tasks/config');
+const concat = require('gulp-concat');
+const minifier = require('gulp-uglify/minifier');
+const uglifyjs = require('uglify-js');
+const argv = require('yargs').argv;
+const min = (argv.min === undefined) ? false : true;
+const prod = (argv.prod === undefined) ? false : true;
+const vscodeTest = require('@vscode/test-electron');
+const { exec } = require('child_process');
+const gulpESLintNew = require('gulp-eslint-new');
+const copy = require('esbuild-plugin-copy');
+const clc = require('cli-color');
+const path = require('path');
+const esbuild = require('esbuild');
+const { typecheckPlugin } = require('@jgoz/esbuild-plugin-typecheck');
+const run = require('gulp-run-command').default;
 require('./tasks/packagetasks');
 require('./tasks/localizationtasks');
 
-gulp.task('ext:lint', () => {
-	// !! If updating this make sure to check if you need to update the TSA Scan task in ADO !!
-	var program = tslint.Linter.createProgram('tsconfig.json');
-	return gulp.src([
-		config.paths.project.root + '/src/**/*.ts',
-		'!' + config.paths.project.root + '/src/views/htmlcontent/**/*',
-		config.paths.project.root + '/test/**/*.ts'
-	])
-		.pipe((gulpTsLint({
-			program,
-			formatter: "verbose",
-			rulesDirectory: "node_modules/tslint-microsoft-contrib"
-		})))
-		.pipe(gulpTsLint.report());
-});
+function getTimeString() {
+	const now = new Date();
+	const hours = String(now.getHours()).padStart(2, '0');
+	const minutes = String(now.getMinutes()).padStart(2, '0');
+	const seconds = String(now.getSeconds()).padStart(2, '0');
+	return clc.white(`${hours}:${minutes}:${seconds}`);
+}
+
+function esbuildProblemMatcherPlugin(processName) {
+	const formattedProcessName = clc.cyan(`${processName}`);
+	return {
+		name: 'esbuild-problem-matcher',
+		setup(build) {
+			let timeStart;
+			build.onStart(async () => {
+				timeStart = Date.now();
+				timeStart.toString()
+				console.log(`[${getTimeString()}] Starting '${formattedProcessName}' build`);
+			});
+			build.onEnd(async (result) => {
+				const timeEnd = Date.now();
+				result.errors.forEach(({ text, location }) => {
+					console.error(`✘ [ERROR] ${text}`);
+					console.error(`    ${location.file}:${location.line}:${location.column}:`);
+				});
+				console.log(`[${getTimeString()}] Finished '${formattedProcessName}' build after ${clc.magenta((timeEnd - timeStart) + ' ms')} `);
+			})
+		}
+	};
+}
+
+const cssLoaderPlugin = {
+	name: 'css-loader',
+	setup(build) {
+		build.onLoad({ filter: /\.css$/ }, async (args) => {
+			const fs = require('fs').promises;
+			const css = await fs.readFile(args.path, 'utf8');
+			const contents = `
+		  const style = document.createElement('style');
+		  style.textContent = ${JSON.stringify(css)};
+		  document.head.appendChild(style);
+		`;
+			return { contents, loader: 'js' };
+		});
+	},
+};
 
 // Copy icons for OE
 gulp.task('ext:copy-OE-assets', (done) => {
@@ -51,7 +86,67 @@ gulp.task('ext:copy-queryHistory-assets', (done) => {
 		.pipe(gulp.dest('out/src/queryHistory/icons'));
 });
 
-// Compile source
+async function generateExtensionBundle() {
+	const ctx = await esbuild.context({
+		entryPoints: [
+			'src/extension.ts',
+			'src/languageService/serviceInstallerUtil.ts',
+			'src/telemetry/telemetryInterfaces.ts',
+			'src/protocol.ts',
+			'src/models/interfaces.ts'
+		],
+		bundle: true,
+		format: 'cjs',
+		minify: false,
+		sourcemap: true,
+		sourcesContent: false,
+		platform: 'node',
+		outdir: 'out/src',
+		external: [
+			'vscode',
+		],
+		logLevel: 'silent',
+		loader: {
+			'.ts': 'ts',
+			'.js': 'js',
+			'.json': 'json',
+		},
+		plugins: [
+			{
+				name: 'custom-types',
+				setup(build) {
+					build.onResolve({ filter: /^vscode-mssql$/ }, args => {
+						return { path: path.resolve(__dirname, 'typings/vscode-mssql.d.ts') };
+					});
+				}
+			},
+			copy.copy({
+				assets: [
+					{
+						from: 'src/objectExplorer/objectTypes/*.svg',
+						to: './out/src/objectTypes'
+					},
+					{
+						from: 'src/controllers/sqlOutput.ejs',
+						to: './out/src/sqlOutput.ejs'
+					},
+					{
+						from: 'src/configurations/config.json',
+						to: './out/config.json'
+					}
+				],
+				resolveFrom: __dirname
+			}),
+			esbuildProblemMatcherPlugin('Extension')
+		],
+	});
+
+	await ctx.rebuild();
+	await ctx.dispose();
+}
+
+gulp.task('ext:bundle-src', gulp.series(generateExtensionBundle));
+
 gulp.task('ext:compile-src', (done) => {
 	return gulp.src([
 		config.paths.project.root + '/src/**/*.ts',
@@ -66,24 +161,81 @@ gulp.task('ext:compile-src', (done) => {
 				process.exit(1);
 			}
 		})
-		.pipe(nls.rewriteLocalizeCalls())
-		.pipe(nls.createAdditionalLanguageFiles(nls.coreLanguages, config.paths.project.root + '/localization/i18n', undefined, false))
 		.pipe(srcmap.write('.', { includeContent: false, sourceRoot: '../src' }))
 		.pipe(gulp.dest('out/src/'));
 });
 
 // Compile angular view
 gulp.task('ext:compile-view', (done) => {
-	return gulp.src([
+return gulp.src([
 		config.paths.project.root + '/src/views/htmlcontent/**/*.ts',
 		config.paths.project.root + '/typings/**/*.d.ts'])
 		.pipe(srcmap.init())
 		.pipe(tsProject())
-		.pipe(nls.rewriteLocalizeCalls())
-		.pipe(nls.createAdditionalLanguageFiles(nls.coreLanguages, config.paths.project.root + '/localization/i18n', undefined, false))
 		.pipe(srcmap.write('.', { includeContent: false, sourceRoot: '../src' }))
 		.pipe(gulp.dest('out/src/views/htmlcontent'));
 });
+
+async function generateReactWebviewsBundle() {
+	const ctx = await esbuild.context({
+		/**
+		 * Entry points for React webviews. This generates individual bundles (both .js and .css files)
+		 * for each entry point, to be used by the webview's HTML content.
+		 */
+		entryPoints: {
+			'connectionDialog': 'src/reactviews/pages/ConnectionDialog/index.tsx',
+			'executionPlan': 'src/reactviews/pages/ExecutionPlan/index.tsx',
+			'tableDesigner': 'src/reactviews/pages/TableDesigner/index.tsx',
+			'objectExplorerFilter': 'src/reactviews/pages/ObjectExplorerFilter/index.tsx',
+			'queryResult': 'src/reactviews/pages/QueryResult/index.tsx',
+			'userSurvey': 'src/reactviews/pages/UserSurvey/index.tsx',
+		},
+		bundle: true,
+		outdir: 'out/src/reactviews/assets',
+		platform: 'browser',
+		loader: {
+			'.tsx': 'tsx',
+			'.ts': 'ts',
+			'.css': 'css',
+			'.svg': 'file',
+			'.js': 'js',
+			'.png': 'file',
+			'.gif': 'file',
+		},
+		tsconfig: './tsconfig.react.json',
+		plugins: [
+			esbuildProblemMatcherPlugin('React App'),
+			typecheckPlugin()
+		],
+		sourcemap: prod ? false : 'inline',
+		metafile: true,
+		minify: prod,
+		minifyWhitespace: prod,
+		minifyIdentifiers: prod,
+		format: 'esm',
+		splitting: true,
+	});
+
+	const result = await ctx.rebuild();
+
+	/**
+	 * Generating esbuild metafile for webviews. You can analyze the metafile https://esbuild.github.io/analyze/
+	 * to see the bundle size and other details.
+	 */
+	const fs = require('fs').promises;
+	if (result.metafile) {
+		await fs.writeFile('./webviews-metafile.json', JSON.stringify(result.metafile));
+	}
+
+
+	await ctx.dispose();
+}
+
+// Compile react views
+gulp.task('ext:compile-reactviews',
+	gulp.series(generateReactWebviewsBundle)
+);
+
 
 // Copy systemjs config file
 gulp.task('ext:copy-systemjs-config', (done) => {
@@ -180,13 +332,12 @@ gulp.task('ext:copy-dependencies', (done) => {
 	]).pipe(gulp.dest('out/src/views/htmlcontent/src/js/lib'));
 
 	gulp.src([
-		config.paths.project.root + '/node_modules/angular2-slickgrid/components/css/SlickGrid.css',
+		config.paths.project.root + '/node_modules/angular2-slickgrid/out/css/SlickGrid.css',
 		config.paths.project.root + '/node_modules/slickgrid/slick.grid.css'
 	]).pipe(gulp.dest('out/src/views/htmlcontent/src/css'));
 
 	gulp.src([
-		config.paths.project.root + '/node_modules/angular2-slickgrid/index.js',
-		config.paths.project.root + '/node_modules/angular2-slickgrid/components/**/*.js'
+		config.paths.project.root + '/node_modules/angular2-slickgrid/out/**/*.js'
 	], { base: config.paths.project.root + '/node_modules/angular2-slickgrid' }).pipe(gulp.dest('out/src/views/htmlcontent/src/js/lib/angular2-slickgrid'));
 
 	return gulp.src([config.paths.project.root + '/node_modules/@angular/**/*'])
@@ -233,39 +384,28 @@ gulp.task('ext:copy-js', () => {
 // Copy the files which aren't used in compilation
 gulp.task('ext:copy', gulp.series('ext:copy-tests', 'ext:copy-js', 'ext:copy-config', 'ext:copy-systemjs-config', 'ext:copy-dependencies', 'ext:copy-html', 'ext:copy-css', 'ext:copy-images'));
 
-gulp.task('ext:localization', gulp.series('ext:localization:generate-eng-package.nls', 'ext:localization:xliff-to-ts', 'ext:localization:xliff-to-json', 'ext:localization:xliff-to-package.nls'));
+gulp.task('ext:build', gulp.series('ext:generate-runtime-localization-files', 'ext:copy', 'ext:clean-library-ts-files', 'ext:compile', 'ext:compile-view', 'ext:compile-reactviews')); // removed lint before copy
 
-gulp.task('ext:build', gulp.series('ext:localization', 'ext:copy', 'ext:clean-library-ts-files', 'ext:compile', 'ext:compile-view')); // removed lint before copy
-
-gulp.task('ext:test', async (done) => {
+gulp.task('ext:test', async () => {
 	let workspace = process.env['WORKSPACE'];
 	if (!workspace) {
 		workspace = process.cwd();
 	}
-	process.env.JUNIT_REPORT_PATH = workspace + '/test-reports/ext_xunit.xml';
+	process.env.JUNIT_REPORT_PATH = workspace + '/test-reports/test-results-ext.xml';
 	var args = ['--verbose', '--disable-gpu', '--disable-telemetry', '--disable-updates', '-n'];
-	let vscodeVersion = packageJson.engines.vscode.slice(1);
-	let extensionTestsPath = `${workspace}/out/test`;
-	let vscodePath = await vscodeTest.downloadAndUnzipVSCode(vscodeVersion);
-	try {
-		await vscodeTest.runTests({
-			vscodeExecutablePath: vscodePath,
-			extensionDevelopmentPath: workspace,
-			extensionTestsPath: extensionTestsPath,
-			launchArgs: args
-		});
-	} catch (error) {
-		console.log(`stdout: ${process.stdout}`);
-		console.log(`stderr: ${process.stderr}`);
-		console.error(`exec error: ${error}`);
-	}
-	done();
-	process.exit(0);
+	let extensionTestsPath = `${workspace}/out/test/unit`;
+	let vscodePath = await vscodeTest.downloadAndUnzipVSCode();
+	await vscodeTest.runTests({
+		vscodeExecutablePath: vscodePath,
+		extensionDevelopmentPath: workspace,
+		extensionTestsPath: extensionTestsPath,
+		launchArgs: args
+	});
 });
 
-gulp.task('test', gulp.series('ext:test'));
+gulp.task('ext:smoke', run('npx playwright test'));
 
-require('./tasks/covertasks');
+gulp.task('test', gulp.series('ext:test'));
 
 gulp.task('clean', function (done) {
 	return del('out', done);
@@ -273,8 +413,17 @@ gulp.task('clean', function (done) {
 
 gulp.task('build', gulp.series('clean', 'ext:build', 'ext:install-service'));
 
-gulp.task('watch', function () {
-	return gulp.watch(config.paths.project.root + '/src/**/*', gulp.series('build'))
+gulp.task('watch-src', function () {
+	return gulp.watch('./src/**/*.ts', gulp.series('ext:compile-src'))
 });
 
-gulp.task('lint', gulp.series('ext:lint'));
+gulp.task('watch-tests', function () {
+	return gulp.watch('./test/**/*.ts', gulp.series('ext:compile-tests'))
+});
+
+gulp.task('watch-reactviews', function () {
+	return gulp.watch(['./src/reactviews/**/*', './typings/**/*', './src/sharedInterfaces/**/*'], gulp.series('ext:compile-reactviews'))
+});
+
+// Do a full build first so we have the latest compiled files before we start watching for more changes
+gulp.task('watch', gulp.series('build', gulp.parallel('watch-src', 'watch-tests', 'watch-reactviews')));

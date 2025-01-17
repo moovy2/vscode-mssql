@@ -22,16 +22,35 @@
             }
         },
         {
-            "label": "cover:enable",
+            "label": "watch",
             "type": "gulp",
-            "task": "cover:disable",
-            "problemMatcher": []
+            "task": "watch",
+            "isBackground": true,
+            "problemMatcher": [
+                "$lessCompile",
+                "$tsc",
+                "$jshint",
+                {
+                    "owner": "custom",
+                    "base": "$tsc",
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "Starting 'watch'...",
+                        "endsPattern": "Starting 'watch-reactviews'...",
+                    }
+                }
+            ],
+            "group": {
+                "_id": "watch",
+                "isDefault": false
+            }
         },
         {
-            "label": "cover:disable",
-            "type": "gulp",
-            "task": "cover:disable",
-            "problemMatcher": []
+            "type": "npm",
+            "script": "lint",
+            "problemMatcher": [],
+            "label": "npm: lint",
+            "detail": "eslint ."
         }
     ]
 }
